@@ -1,0 +1,15 @@
+{
+	"name": "adf-aula-dw",
+	"properties": {
+		"trustModeClaimForMi": {
+			"value": "Disabled",
+			"editable": true
+		}
+	},
+	"location": "canadacentral",
+	"identity": {
+		"type": "SystemAssigned",
+		"principalId": "0bda7805-3e60-4443-a77b-91ab56069a55",
+		"tenantId": "11dbbfe2-89b8-4549-be10-cec364e59551"
+	}
+}
