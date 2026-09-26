@@ -10,12 +10,33 @@
 						"type": "DatasetReference"
 					},
 					"name": "srcRaw"
+				},
+				{
+					"dataset": {
+						"referenceName": "DS_SQL_DIM_REDE",
+						"type": "DatasetReference"
+					},
+					"name": "srcDimAtual"
 				}
 			],
-			"sinks": [],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "DS_SQL_DIM_REDE",
+						"type": "DatasetReference"
+					},
+					"name": "sinkDimRede"
+				}
+			],
 			"transformations": [
 				{
 					"name": "flattenFeatures"
+				},
+				{
+					"name": "aggRedes"
+				},
+				{
+					"name": "existsRedesNovas"
 				}
 			],
 			"scriptLines": [
@@ -29,12 +50,42 @@
 				"     validateSchema: false,",
 				"     ignoreNoFilesFound: false,",
 				"     documentForm: 'singleDocument') ~> srcRaw",
+				"source(output(",
+				"          REDE_SK as integer,",
+				"          CODIGO_REDE as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> srcDimAtual",
 				"srcRaw foldDown(unroll(features, features),",
 				"     mapColumn(",
 				"          CODIGO_REDE = features.properties.net",
 				"     ),",
 				"     skipDuplicateMapInputs: false,",
-				"     skipDuplicateMapOutputs: false) ~> flattenFeatures"
+				"     skipDuplicateMapOutputs: false) ~> flattenFeatures",
+				"flattenFeatures aggregate(groupBy(CODIGO_REDE),",
+				"     QTD_EVENTOS = count()) ~> aggRedes",
+				"aggRedes, srcDimAtual exists(aggRedes@CODIGO_REDE == srcDimAtual@CODIGO_REDE,",
+				"     negate:true,",
+				"     broadcast: 'auto')~> existsRedesNovas",
+				"existsRedesNovas sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          REDE_SK as integer,",
+				"          CODIGO_REDE as string",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          CODIGO_REDE",
+				"     )) ~> sinkDimRede"
 			]
 		}
 	}
