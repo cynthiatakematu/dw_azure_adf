@@ -1,85 +1,125 @@
-# dw_azure_adf
+# Terremotos USGS → Data Warehouse na Azure
 
-Checkpoint FIAP de Data Warehouse com Azure Data Factory: ingestão da API pública de terremotos do USGS, armazenamento do GeoJSON original no ADLS Gen2 e carga de um modelo dimensional (dimensão + fato) no Azure SQL Database.
+Pipeline de dados que coleta os terremotos de magnitude ≥ 4,5 registrados pela API pública do **USGS** (Serviço Geológico dos EUA), guarda o arquivo original em um data lake e carrega um **modelo dimensional (fato + dimensão)** no Azure SQL, pronto para consultas analíticas.
 
-Aluna: Cynthia Takematu (RM 564100)
+![Azure Data Factory](https://img.shields.io/badge/Azure_Data_Factory-0078D4?logo=microsoftazure&logoColor=white)
+![ADLS Gen2](https://img.shields.io/badge/ADLS_Gen2-0078D4?logo=microsoftazure&logoColor=white)
+![Azure SQL](https://img.shields.io/badge/Azure_SQL-CC2927?logo=microsoftsqlserver&logoColor=white)
+![SQL](https://img.shields.io/badge/SQL-4479A1?logo=databricks&logoColor=white)
+
+> Projeto do checkpoint de **Data Warehouse** do curso de Data Science da FIAP.
+
+## Destaques
+
+- **623 terremotos** de janeiro/2024 carregados, com a contagem da fato **batendo 100%** com o `metadata.count` da API.
+- **Carga idempotente**: o pipeline pode ser reexecutado sem gerar duplicatas.
+- **Validações de qualidade em SQL**: contagem origem × destino, checagem de chaves duplicadas e consulta analítica final.
+- Resolução de um problema real de encoding (BOM no JSON), documentada em [Decisões técnicas](#decisões-técnicas).
 
 ## Arquitetura
 
-```
-API USGS (REST, GET anônimo)
-        │  Copy Activity (sem transformação)
-        ▼
-ADLS Gen2  landing/raw/prova_usgs/earthquakes_2024_01.geojson
-        │  Mapping Data Flows (Flatten em features)
-        ▼
-Azure SQL  dbo.DIM_REDE_SISMICA  ◄──FK──  dbo.FATO_TERREMOTO
+```mermaid
+flowchart LR
+    A[API USGS<br/>GeoJSON] -->|Copy Activity| B[(ADLS Gen2<br/>landing/raw)]
+    B -->|Data Flow<br/>DF_DIM_REDE_SISMICA| C[(DIM_REDE_SISMICA)]
+    B -->|Data Flow<br/>DF_FATO_TERREMOTO| D[(FATO_TERREMOTO)]
+    C -.FK REDE_SK.-> D
 ```
 
-Fonte: `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2024-01-01&endtime=2024-02-01&minmagnitude=4.5&orderby=time-asc`
+O pipeline `PL_CP_USGS` executa três atividades em sequência, cada uma dependente do sucesso da anterior:
 
-## Recursos Azure
-
-| Recurso | Nome | Observação |
+| # | Atividade | O que faz |
 |---|---|---|
-| Resource group | `GR_RM564100` | região `canadacentral` |
-| Data Factory | `adf-aula-dw` | integrado a este repositório (branch `main`, publish `adf_publish`) |
-| Storage ADLS Gen2 | `adlsdw564100` | hierarchical namespace ativo, container `landing` |
-| Azure SQL | `server64100` / `free-sql-db-0970308` | oferta gratuita |
+| 1 | `CP_USGS_API_TO_RAW` (Copy) | Consulta a API e grava o GeoJSON original em `landing/raw/prova_usgs/earthquakes_2024_01.geojson`, sem transformação. |
+| 2 | `DF_CARGA_DIM` (Data Flow) | Desaninha `features`, agrupa as redes sísmicas distintas (`properties.net`) e insere **apenas as redes novas** na dimensão. |
+| 3 | `DF_CARGA_FATO` (Data Flow) | Desaninha os eventos, converte tipos, busca a chave da rede na dimensão (Lookup) e insere **apenas os eventos novos** na fato. |
 
-## Estrutura do repositório
+![Pipeline executado com sucesso](docs/evidencias/03_pipeline_sucesso.png)
 
-| Pasta | Conteúdo |
-|---|---|
-| `linkedService/` | `LS_REST_USGS` (REST anônimo), `LS_ADLS_USGS` (ADLS Gen2), `LS_SQL_DW` (Azure SQL) |
-| `dataset/` | `DS_REST_USGS`, `DS_JSON_USGS_RAW`, `DS_JSON_USGS_RAW_DF`, `DS_SQL_DIM_REDE`, `DS_SQL_FATO_TERREMOTO` |
-| `dataflow/` | `DF_DIM_REDE_SISMICA`, `DF_FATO_TERREMOTO` |
-| `pipeline/` | `PL_CP_USGS` |
-| `factory/` | definição do Data Factory |
+## Modelo de dados
 
-## Pipeline `PL_CP_USGS`
+Esquema estrela com granularidade de **um registro por terremoto**:
 
-Três atividades em sequência, cada uma dependente do sucesso da anterior:
-
-1. **`CP_USGS_API_TO_RAW`** (Copy): consulta a API e grava o retorno em `landing/raw/prova_usgs/earthquakes_2024_01.geojson`, sem mapeamento, preservando `metadata` e `features`.
-2. **`DF_CARGA_DIM`** (Data flow `DF_DIM_REDE_SISMICA`): Flatten em `features`, redes distintas de `properties.net` via Aggregate, Exists para inserir apenas redes novas, carga em `DIM_REDE_SISMICA`.
-3. **`DF_CARGA_FATO`** (Data flow `DF_FATO_TERREMOTO`): Flatten em `features`, conversões de tipo, Lookup de `properties.net` em `DIM_REDE_SISMICA`, Exists por `EVENTO_ID` e carga em `FATO_TERREMOTO` sem mapear a coluna identity `EVENTO_SK`.
-
-Transformações da fato:
-
-```
-DATA_HORA_UTC   = toTimestamp(toLong(features.properties.time))
-LONGITUDE       = toDecimal(features.geometry.coordinates[1], 10, 6)
-LATITUDE        = toDecimal(features.geometry.coordinates[2], 10, 6)
-PROFUNDIDADE_KM = toDecimal(features.geometry.coordinates[3], 10, 3)
-MAGNITUDE       = toDecimal(features.properties.mag, 6, 2)
+```mermaid
+erDiagram
+    DIM_REDE_SISMICA ||--o{ FATO_TERREMOTO : "REDE_SK"
+    DIM_REDE_SISMICA {
+        int REDE_SK PK
+        nvarchar CODIGO_REDE UK
+    }
+    FATO_TERREMOTO {
+        bigint EVENTO_SK PK
+        nvarchar EVENTO_ID UK
+        int REDE_SK FK
+        datetime2 DATA_HORA_UTC
+        decimal MAGNITUDE
+        decimal PROFUNDIDADE_KM
+        decimal LATITUDE
+        decimal LONGITUDE
+        nvarchar LOCAL_DESCRICAO
+    }
 ```
 
-Os índices de array em Mapping Data Flow começam em 1.
+Transformações aplicadas na fato (arrays em Mapping Data Flow começam em 1):
 
-## Decisões de implementação
+```text
+DATA_HORA_UTC   = toTimestamp(toLong(properties.time))      -- epoch em ms → data/hora
+MAGNITUDE       = toDecimal(properties.mag, 6, 2)
+LONGITUDE       = toDecimal(geometry.coordinates[1], 10, 6)
+LATITUDE        = toDecimal(geometry.coordinates[2], 10, 6)
+PROFUNDIDADE_KM = toDecimal(geometry.coordinates[3], 10, 3)
+```
 
-- **Dois datasets para o arquivo raw.** Com o encoding padrão, a Copy gravava o arquivo com BOM (`EF BB BF`), o que fazia o Spark do data flow rejeitar o JSON. A Copy usa `DS_JSON_USGS_RAW` com `UTF-8 without BOM`. Como esse encoding não é aceito em data flow, a leitura usa `DS_JSON_USGS_RAW_DF` (mesmo arquivo, `UTF-8`).
-- **Document form `Single document`** nas sources JSON, pois o GeoJSON é um único objeto.
-- **Campos extraídos no Flatten.** O Flatten da fato já projeta `id`, `net`, `time`, `mag`, `place` e `coordinates`, e o Derived Column aplica as conversões acima sobre essas colunas.
-- **Cargas idempotentes.** Os dois fluxos usam Exists (`Doesn't exist`) contra a tabela de destino, então o pipeline pode ser reexecutado sem violar as restrições `UNIQUE` de `CODIGO_REDE` e `EVENTO_ID`.
+O DDL completo e as consultas de validação estão em [`sql/modelo_e_validacao.sql`](sql/modelo_e_validacao.sql).
 
-## Modelo e validação
-
-DDL e consultas de validação em `modelo_e_validacao.sql` (entregue junto com as evidências).
-
-Resultado da execução:
+## Resultados e validação
 
 | Validação | Resultado |
 |---|---|
-| `metadata.count` do GeoJSON x linhas da fato | 623 = 623 |
-| `EVENTO_ID` duplicados | nenhum |
-| Redes na dimensão | `us` (616), `ak` (5), `pr` (2) |
-| Maior magnitude | `us6000m0xl`, 2024 Noto Peninsula, Japão, M 7.5 |
+| `metadata.count` do GeoJSON × linhas na fato | 623 = 623 ✅ |
+| `EVENTO_ID` duplicados | nenhum ✅ |
+| Eventos por rede sísmica | `us` 616 · `ak` 5 · `pr` 2 |
+| Maior magnitude do mês | **M 7,5**, Península de Noto (Japão), 01/01/2024 |
+
+![Consultas de validação no Azure SQL](docs/evidencias/04_resultado_sql.png)
+
+## Decisões técnicas
+
+- **Dois datasets para o mesmo arquivo raw.** Com o encoding padrão, a Copy gravava o arquivo com BOM (`EF BB BF`) e o Spark do Data Flow rejeitava o JSON. A Copy passou a gravar com `UTF-8 without BOM` (`DS_JSON_USGS_RAW`). Como esse encoding não é aceito como fonte de Data Flow, a leitura usa um segundo dataset (`DS_JSON_USGS_RAW_DF`) apontando para o mesmo arquivo.
+- **Document form `Single document`**, pois o GeoJSON é um único objeto com o array `features`.
+- **Cargas idempotentes.** Os dois fluxos usam a transformação *Exists* (`Doesn't exist`) contra a tabela de destino, respeitando as restrições `UNIQUE` de `CODIGO_REDE` e `EVENTO_ID`.
+- **Chaves substitutas no banco.** `REDE_SK` e `EVENTO_SK` são `IDENTITY` no Azure SQL e não são mapeadas no sink.
+- **Camada raw preservada.** O arquivo original fica intacto no data lake, o que permite reprocessar sem chamar a API de novo.
 
 ## Como executar
 
-1. Criar as tabelas com a Parte 3 de `modelo_e_validacao.sql`.
-2. Garantir a regra de firewall do Azure SQL que permite serviços do Azure.
-3. No ADF Studio, abrir `PL_CP_USGS` e executar via Debug ou Publish + Trigger now.
-4. Rodar as consultas da Parte 5 para validar.
+**Pré-requisitos:** assinatura Azure com Data Factory, Storage Account ADLS Gen2 (container `landing`) e Azure SQL Database.
+
+1. No Azure SQL, execute a **Parte 3** de [`sql/modelo_e_validacao.sql`](sql/modelo_e_validacao.sql) para criar as tabelas.
+2. Libere no firewall do Azure SQL o acesso de serviços do Azure.
+3. Crie um Data Factory e conecte-o a este repositório em **Manage → Git configuration** (branch de colaboração `main`).
+4. Edite os três linked services (`LS_REST_USGS`, `LS_ADLS_USGS`, `LS_SQL_DW`) com seus próprios endpoints e credenciais.
+5. Execute o `PL_CP_USGS` via **Debug** ou **Publish → Trigger now**.
+6. Rode a **Parte 5** do script SQL para validar a carga.
+
+## Estrutura do repositório
+
+```text
+├── pipeline/       PL_CP_USGS (orquestração)
+├── dataflow/       DF_DIM_REDE_SISMICA, DF_FATO_TERREMOTO
+├── dataset/        REST, JSON (raw) e tabelas SQL
+├── linkedService/  conexões com a API, o ADLS Gen2 e o Azure SQL
+├── factory/        definição do Data Factory
+├── sql/            DDL do modelo e consultas de validação
+└── docs/evidencias prints da execução
+```
+
+## Próximos passos
+
+- Parametrizar o período (`starttime`/`endtime`) e o nome do arquivo para cargas mensais incrementais.
+- Adicionar uma dimensão de tempo e uma de localização (país/região).
+- Criar um dashboard no Power BI sobre o modelo (magnitude × profundidade, mapa de eventos).
+
+## Autora
+
+**Cynthia Takematu** · [GitHub](https://github.com/cynthiatakematu)
