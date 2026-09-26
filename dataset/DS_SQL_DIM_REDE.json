@@ -1,0 +1,26 @@
+{
+	"name": "DS_SQL_DIM_REDE",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "LS_SQL_DW",
+			"type": "LinkedServiceReference"
+		},
+		"annotations": [],
+		"type": "AzureSqlTable",
+		"schema": [
+			{
+				"name": "REDE_SK",
+				"type": "int",
+				"precision": 10
+			},
+			{
+				"name": "CODIGO_REDE",
+				"type": "nvarchar"
+			}
+		],
+		"typeProperties": {
+			"schema": "dbo",
+			"table": "DIM_REDE_SISMICA"
+		}
+	}
+}
