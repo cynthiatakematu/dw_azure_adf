@@ -1,0 +1,167 @@
+{
+	"name": "DS_JSON_USGS_RAW_DF",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "LS_ADLS_USGS",
+			"type": "LinkedServiceReference"
+		},
+		"annotations": [],
+		"type": "Json",
+		"typeProperties": {
+			"location": {
+				"type": "AzureBlobFSLocation",
+				"fileName": "earthquakes_2024_01.geojson",
+				"folderPath": "raw/prova_usgs",
+				"fileSystem": "landing"
+			}
+		},
+		"schema": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string"
+				},
+				"metadata": {
+					"type": "object",
+					"properties": {
+						"generated": {
+							"type": "integer"
+						},
+						"url": {
+							"type": "string"
+						},
+						"title": {
+							"type": "string"
+						},
+						"status": {
+							"type": "integer"
+						},
+						"api": {
+							"type": "string"
+						},
+						"count": {
+							"type": "integer"
+						}
+					}
+				},
+				"features": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"properties": {
+							"type": {
+								"type": "string"
+							},
+							"properties": {
+								"type": "object",
+								"properties": {
+									"mag": {
+										"type": "number"
+									},
+									"place": {
+										"type": "string"
+									},
+									"time": {
+										"type": "integer"
+									},
+									"updated": {
+										"type": "integer"
+									},
+									"tz": {
+										"type": "null"
+									},
+									"url": {
+										"type": "string"
+									},
+									"detail": {
+										"type": "string"
+									},
+									"felt": {
+										"type": "null"
+									},
+									"cdi": {
+										"type": "null"
+									},
+									"mmi": {
+										"type": "null"
+									},
+									"alert": {
+										"type": "null"
+									},
+									"status": {
+										"type": "string"
+									},
+									"tsunami": {
+										"type": "integer"
+									},
+									"sig": {
+										"type": "integer"
+									},
+									"net": {
+										"type": "string"
+									},
+									"code": {
+										"type": "string"
+									},
+									"ids": {
+										"type": "string"
+									},
+									"sources": {
+										"type": "string"
+									},
+									"types": {
+										"type": "string"
+									},
+									"nst": {
+										"type": "integer"
+									},
+									"dmin": {
+										"type": "number"
+									},
+									"rms": {
+										"type": "number"
+									},
+									"gap": {
+										"type": "integer"
+									},
+									"magType": {
+										"type": "string"
+									},
+									"type": {
+										"type": "string"
+									},
+									"title": {
+										"type": "string"
+									}
+								}
+							},
+							"geometry": {
+								"type": "object",
+								"properties": {
+									"type": {
+										"type": "string"
+									},
+									"coordinates": {
+										"type": "array",
+										"items": {
+											"type": "number"
+										}
+									}
+								}
+							},
+							"id": {
+								"type": "string"
+							}
+						}
+					}
+				},
+				"bbox": {
+					"type": "array",
+					"items": {
+						"type": "number"
+					}
+				}
+			}
+		}
+	}
+}
