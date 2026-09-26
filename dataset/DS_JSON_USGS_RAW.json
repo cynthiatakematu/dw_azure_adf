@@ -13,7 +13,8 @@
 				"fileName": "earthquakes_2024_01.geojson",
 				"folderPath": "raw/prova_usgs",
 				"fileSystem": "landing"
-			}
+			},
+			"encodingName": "UTF-8 without BOM"
 		},
 		"schema": {
 			"type": "object",

@@ -1,0 +1,41 @@
+{
+	"name": "DF_DIM_REDE_SISMICA",
+	"properties": {
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "DS_JSON_USGS_RAW",
+						"type": "DatasetReference"
+					},
+					"name": "srcRaw"
+				}
+			],
+			"sinks": [],
+			"transformations": [
+				{
+					"name": "flattenFeatures"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          type as string,",
+				"          metadata as (generated as integer, url as string, title as string, status as integer, api as string, count as integer),",
+				"          features as (type as string, properties as (mag as double, place as string, time as integer, updated as integer, tz as string, url as string, detail as string, felt as string, cdi as string, mmi as string, alert as string, status as string, tsunami as integer, sig as integer, net as string, code as string, ids as string, sources as string, types as string, nst as integer, dmin as double, rms as double, gap as integer, magType as string, type as string, title as string), geometry as (type as string, coordinates as double[]), id as string)[],",
+				"          bbox as double[]",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     ignoreNoFilesFound: false,",
+				"     documentForm: 'singleDocument') ~> srcRaw",
+				"srcRaw foldDown(unroll(features, features),",
+				"     mapColumn(",
+				"          CODIGO_REDE = features.properties.net",
+				"     ),",
+				"     skipDuplicateMapInputs: false,",
+				"     skipDuplicateMapOutputs: false) ~> flattenFeatures"
+			]
+		}
+	}
+}
