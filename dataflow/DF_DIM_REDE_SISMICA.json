@@ -6,7 +6,7 @@
 			"sources": [
 				{
 					"dataset": {
-						"referenceName": "DS_JSON_USGS_RAW",
+						"referenceName": "DS_JSON_USGS_RAW_DF",
 						"type": "DatasetReference"
 					},
 					"name": "srcRaw"
