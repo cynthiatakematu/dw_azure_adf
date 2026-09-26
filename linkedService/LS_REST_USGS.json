@@ -1,0 +1,12 @@
+{
+	"name": "LS_REST_USGS",
+	"properties": {
+		"annotations": [],
+		"type": "RestService",
+		"typeProperties": {
+			"url": "https://earthquake.usgs.gov/",
+			"enableServerCertificateValidation": true,
+			"authenticationType": "Anonymous"
+		}
+	}
+}
