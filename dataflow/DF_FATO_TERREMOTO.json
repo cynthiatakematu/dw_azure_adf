@@ -1,0 +1,143 @@
+{
+	"name": "DF_FATO_TERREMOTO",
+	"properties": {
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "DS_JSON_USGS_RAW_DF",
+						"type": "DatasetReference"
+					},
+					"name": "srcRaw"
+				},
+				{
+					"dataset": {
+						"referenceName": "DS_SQL_DIM_REDE",
+						"type": "DatasetReference"
+					},
+					"name": "srcDimRede"
+				},
+				{
+					"dataset": {
+						"referenceName": "DS_SQL_FATO_TERREMOTO",
+						"type": "DatasetReference"
+					},
+					"name": "srcFatoAtual"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "DS_SQL_FATO_TERREMOTO",
+						"type": "DatasetReference"
+					},
+					"name": "sinkFato"
+				}
+			],
+			"transformations": [
+				{
+					"name": "flattenFeatures"
+				},
+				{
+					"name": "dcCampos"
+				},
+				{
+					"name": "lkpRede"
+				},
+				{
+					"name": "existsEventosNovos"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          bbox as double[],",
+				"          features as (geometry as (coordinates as double[], type as string), id as string, properties as (alert as string, cdi as double, code as string, detail as string, dmin as double, felt as short, gap as short, ids as string, mag as double, magType as string, mmi as double, net as string, nst as short, place as string, rms as double, sig as short, sources as string, status as string, time as long, title as string, tsunami as boolean, type as string, types as string, tz as string, updated as long, url as string), type as string)[],",
+				"          metadata as (api as string, count as short, generated as long, status as short, title as string, url as string),",
+				"          type as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     ignoreNoFilesFound: false,",
+				"     documentForm: 'singleDocument') ~> srcRaw",
+				"source(output(",
+				"          REDE_SK as integer,",
+				"          CODIGO_REDE as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> srcDimRede",
+				"source(output(",
+				"          EVENTO_SK as long,",
+				"          EVENTO_ID as string,",
+				"          REDE_SK as integer,",
+				"          DATA_HORA_UTC as timestamp,",
+				"          MAGNITUDE as decimal(6,2),",
+				"          PROFUNDIDADE_KM as decimal(10,3),",
+				"          LONGITUDE as decimal(10,6),",
+				"          LATITUDE as decimal(10,6),",
+				"          LOCAL_DESCRICAO as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> srcFatoAtual",
+				"srcRaw foldDown(unroll(features, features),",
+				"     mapColumn(",
+				"          EVENTO_ID = features.id,",
+				"          NET_EVENTO = features.properties.net,",
+				"          TIME_MS = features.properties.time,",
+				"          MAG = features.properties.mag,",
+				"          LOCAL_DESCRICAO = features.properties.place,",
+				"          COORDENADAS = features.geometry.coordinates",
+				"     ),",
+				"     skipDuplicateMapInputs: false,",
+				"     skipDuplicateMapOutputs: false) ~> flattenFeatures",
+				"flattenFeatures derive(DATA_HORA_UTC = toTimestamp(toLong(TIME_MS)),",
+				"          MAGNITUDE = toDecimal(MAG, 6, 2),",
+				"          LONGITUDE = toDecimal(COORDENADAS[1], 10, 6),",
+				"          LATITUDE = toDecimal(COORDENADAS[2], 10, 6),",
+				"          PROFUNDIDADE_KM = toDecimal(COORDENADAS[3], 10, 3)) ~> dcCampos",
+				"dcCampos, srcDimRede lookup(NET_EVENTO == CODIGO_REDE,",
+				"     multiple: false,",
+				"     pickup: 'any',",
+				"     broadcast: 'auto')~> lkpRede",
+				"lkpRede, srcFatoAtual exists(flattenFeatures@EVENTO_ID == srcFatoAtual@EVENTO_ID,",
+				"     negate:true,",
+				"     broadcast: 'auto')~> existsEventosNovos",
+				"existsEventosNovos sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          EVENTO_SK as long,",
+				"          EVENTO_ID as string,",
+				"          REDE_SK as integer,",
+				"          DATA_HORA_UTC as timestamp,",
+				"          MAGNITUDE as decimal(6,2),",
+				"          PROFUNDIDADE_KM as decimal(10,3),",
+				"          LONGITUDE as decimal(10,6),",
+				"          LATITUDE as decimal(10,6),",
+				"          LOCAL_DESCRICAO as string",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          EVENTO_ID,",
+				"          REDE_SK,",
+				"          DATA_HORA_UTC,",
+				"          MAGNITUDE,",
+				"          PROFUNDIDADE_KM,",
+				"          LONGITUDE,",
+				"          LATITUDE,",
+				"          LOCAL_DESCRICAO",
+				"     )) ~> sinkFato"
+			]
+		}
+	}
+}
