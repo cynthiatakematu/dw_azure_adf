@@ -1,0 +1,15 @@
+{
+	"name": "DS_REST_USGS",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "LS_REST_USGS",
+			"type": "LinkedServiceReference"
+		},
+		"annotations": [],
+		"type": "RestResource",
+		"typeProperties": {
+			"relativeUrl": "  fdsnws/event/1/query?format=geojson&starttime=2024-01-01&endtime=2024-02-01&minmagnitude=4.5&orderby=time-asc"
+		},
+		"schema": []
+	}
+}
